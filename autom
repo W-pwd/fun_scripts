@@ -1,0 +1,264 @@
+const {
+	chromium
+} = require('playwright');
+const URL = 'http://10.10.167.78/Inpatient/Process/admission_main.aspx';
+const SESSIONS_CONFIG = [{
+	cookie: 'empname=Walid&code=399&pass=Clinic&dep=Clinic',
+	rowIndex: 0,
+	tabText: 'NUC Order',
+	comboBoxIds: ['#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_NUCASPxComboBox3'],
+	addBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_add2',
+	saveBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_save2'
+}, {
+	cookie: 'empname=MYassin&code=1805&pass=Clinic&dep=Clinic',
+	rowIndex: 0,
+	tabText: 'NUC Order',
+	comboBoxIds: ['#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_NUCASPxComboBox3'],
+	addBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_add2',
+	saveBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl67_save2'
+}, {
+	cookie: 'empname=MYassin&code=1949&pass=Clinic&dep=Clinic',
+	rowIndex: 1,
+	tabText: 'Rad Order',
+	comboBoxIds: ['#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_Rad_Contrast', '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_RadASPxComboBox3'],
+	addBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_add3',
+	saveBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_save3'
+}, {
+	cookie: 'empname=MYassin&code=1&pass=Clinic&dep=Clinic',
+	rowIndex: 1,
+	tabText: 'Rad Order',
+	comboBoxIds: ['#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_Rad_Contrast', '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_RadASPxComboBox3'],
+	addBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_add3',
+	saveBtn: '#ctl00_ctl00_ContentPlaceHolder1_orders_ctl68_save3'
+}];
+const GRID_ROW_SELECTOR_PREFIX = 'tr[id^="ctl00_ContentPlaceHolder1_BootstrapFormLayout_Patient_Cards_DXDataRow"]';
+const GRID_ROW_FALLBACK = 'table[id$="Patient_Cards_DXMainTable"] tbody tr';
+async function waitWebFroms(page) {
+	return await Promise.all([page.waitForFunction(() => {
+		return typeof Sys === 'undefined' || !Sys.WebForms || !Sys.WebForms.PageRequestManager || !Sys.WebForms.PageRequestManager.getInstance().get_isInAsyncPostBack();
+	}), page.waitForFunction(() => document.readyState === 'interactive' || document.readyState === 'complete')]);
+}
+async function openOrdersTab(page, tabText) {
+	const retryMS = 2000;
+	const iframeSelector = '#ctl00_ContentPlaceHolder1_BootstrapFormLayout_ShowProcess_Dr_Page_Process_iframe_Orders';
+	const iframeHandle = await page.locator(iframeSelector).elementHandle();
+	let frame = await iframeHandle.contentFrame();
+	const frameAttachStart = Date.now();
+	while (!frame) {
+		if (Date.now() - frameAttachStart > retryMS) {
+			console.log(`Orders iframe element exists but its content frame never been attached for ${tabText}`);
+		}
+		frame = await iframeHandle.contentFrame();
+	}
+	console.log(`${tabText} Waiting for DOMcontentLoaded event`);
+	await frame.waitForLoadState('domcontentloaded');
+	const deadline = Date.now() + retryMS;
+	while (true) {
+		try {
+			const tab = frame.locator('a.nav-link:not(.active)').filter({
+				hasText: tabText
+			}).first();
+			let Tab_isVisible = await tab.isVisible();
+			console.log(`${tabText} TAB is ${Tab_isVisible ? 'found' : 'not found'}`);
+			if (Tab_isVisible) await tab.click();
+			const activeTab = frame.locator('a.nav-link.active').filter({
+				hasText: tabText
+			}).first();
+			let activeTab_isVisible = await activeTab.isVisible();
+			console.log(`${tabText} TAB is ${activeTab_isVisible ? 'is ACTIVE' : 'ACTIVATION FAILED'}`);
+			console.log(`${tabText} Waiting for activeTab to be visible event`);
+			await activeTab.waitFor({
+				state: 'visible',
+				timeout: 100
+			});
+			break;
+		} catch (e) {
+			if (Date.now() > deadline) {
+				console.log(`Clicking "${tabText}" FAILED ${e}`);
+			}
+		}
+	}
+	return frame;
+}
+async function ComboBoxChoose(page, id) {
+	const retryMS = 1000;
+	const deadline = Date.now() + retryMS;
+	while (true) {
+		try {
+			let combo = page.locator(id);
+			let ComboBox_isVisible = await combo.isVisible();
+			if (!ComboBox_isVisible) throw new Error(`${id} ComboBox is not visible`);
+			await combo.locator('.dropdown-toggle').click();
+			const items = page.locator(`${id}_L li:not([data-type])`);
+			const count = await items.count();
+			console.log(`${id} items in the ComboBox are ${count}`)
+			const randomIndex = Math.floor(Math.random() * count);
+			await items.nth(randomIndex).click({
+				timeout: 100
+			});
+			break;
+		} catch (e) {
+			if (Date.now() > deadline) {
+				console.log(`${id} ComboBox clicking FAILED ${e}`);
+			}
+		}
+	}
+}
+async function getRowLocator(page, index) {
+	const primary = page.locator(GRID_ROW_SELECTOR_PREFIX).nth(index);
+	const fallback = page.locator(GRID_ROW_FALLBACK).nth(index);
+	const deadline = Date.now() + 10000;
+	while (Date.now() < deadline) {
+		try {
+			await primary.waitFor({
+				state: 'visible',
+				timeout: 100
+			});
+			let isvisible = await primary.isVisible()
+			if (!isvisible) {
+				let fallback_visible = await fallback.waitFor({
+					state: 'visible',
+					timeout: 100
+				});
+				if (fallback_visible) return fallback;
+				throw new Error(`Failed to get rows`);
+			} else {
+				return primary;
+			}
+		} catch {
+			console.log(`Page Failed getting the row`);
+		}
+	}
+}
+async function createPageSession({
+		browser,
+		url,
+		cookieValue,
+		width,
+		height
+	}) {
+		const context = await browser.newContext({
+			viewport: null
+		});
+		const page = await context.newPage();
+		await page.setViewportSize({
+			width,
+			height
+		});
+		await context.addCookies([{
+			name: 'user',
+			value: cookieValue,
+			url
+		}]);
+		return {
+			context,
+			page
+		};
+	}
+	(async () => {
+		const preferredChannel = 'msedge';
+		const WINDOW_WIDTH = 1920;
+		const WINDOW_HEIGHT = 1080;
+		const launchArgs = ['--start-maximized', '--start-fullscreen', `--window-size=${WINDOW_WIDTH},${WINDOW_HEIGHT}`, '--window-position=0,0'];
+		let browsers = [];
+		try {
+			// One browser + one session per config entry, staggered start like the original.
+			browsers = await Promise.all(SESSIONS_CONFIG.map(() => chromium.launch({
+				headless: false,
+				channel: preferredChannel,
+				args: launchArgs
+			})));
+			const sessions = await Promise.all(SESSIONS_CONFIG.map((cfg, i) => (async () => {
+				if (i > 0) await new Promise(r => setTimeout(r, 1000 * i));
+				return createPageSession({
+					browser: browsers[i],
+					url: URL,
+					cookieValue: cfg.cookie,
+					width: WINDOW_WIDTH,
+					height: WINDOW_HEIGHT
+				});
+			})()));
+			const pages = sessions.map(s => s.page);
+			await Promise.all(pages.map(p => p.goto(URL + '?dep=5', {
+				waitUntil: 'domcontentloaded'
+			})));
+			await Promise.all(pages.map(waitWebFroms));
+			await Promise.all(pages.map(async (page, i) => {
+				try {
+					console.log(`Page${i + 1} trying to locate the girdview stage`);
+					const row = await getRowLocator(page, SESSIONS_CONFIG[i].rowIndex);
+					const radio = row.locator('input[type="radio"]').first();
+					await radio.waitFor({
+						state: 'visible',
+						timeout: 10000
+					});
+					await radio.click({
+						timeout: 10000
+					});
+				} catch (e) {
+					console.error(`page${i + 1} grid row radio click failed`, e);
+				} finally {
+					console.log(`page${i + 1} locate gridview : DONE`);
+				}
+			}));
+			await Promise.all(pages.map(waitWebFroms));
+			console.log(`---------------------------------------`);
+			const frames = await Promise.all(pages.map(async (page, i) => {
+				try {
+					console.log(`Page${i + 1} finding ${SESSIONS_CONFIG[i].tabText} tab`);
+					const frame = await openOrdersTab(page, SESSIONS_CONFIG[i].tabText);
+					console.log(`Page${i + 1} finding ${SESSIONS_CONFIG[i].tabText} tab: DONE`);
+					return frame;
+				} catch (e) {
+					console.error(`page${i + 1} ${SESSIONS_CONFIG[i].tabText} tab not found or click failed`, e);
+					return undefined;
+				}
+			}));
+			await Promise.all(frames.map(async (frame, i) => {
+				if (!frame) return;
+				try {
+					console.log(`Page${i + 1} Choosing the ComboBox`);
+					for (const comboId of SESSIONS_CONFIG[i].comboBoxIds) {
+						await ComboBoxChoose(frame, comboId);
+					}
+				} catch (e) {
+					console.error(`page${i + 1} ComboboxChoose failed`, e);
+				}
+			}));
+			pages.forEach(p => waitWebFroms(p));
+			await Promise.all(frames.map(async (frame, i) => {
+				if (!frame) return;
+				while (true) {
+					try {
+						console.log(`Page${i + 1} clicking the ADD button`);
+						await frame.locator(SESSIONS_CONFIG[i].addBtn).click({
+							timeout: 100
+						});
+                        break;
+					} catch (e) {
+						console.log(`Page${i + 1} failed clicking the ADD button`, e);
+					}
+				}
+			}));
+			pages.forEach(p => waitWebFroms(p));
+			console.log(`---------------------------------------`);
+			while (true) {
+				try {
+					console.log(`SAVING STARTING TO CLICK SAVE ON ALL`);
+					await Promise.all(frames.map((frame, i) => frame ? frame.locator(SESSIONS_CONFIG[i].saveBtn).click() : Promise.resolve()));
+					break;
+				} catch (e) {
+					console.log(`SAVING FAILED ${e}`);
+				}
+			}
+			console.log(`everything went OK`);
+			console.log(`Done`);
+			await new Promise(resolve => process.stdin.once('data', resolve));
+		} catch (error) {
+			console.error('Test failed:', error);
+		} finally {
+			// console.log('Closing browsers...');
+			// await Promise.all(browsers.map(b => b?.close()));
+			// console.log('Browsers closed');
+		}
+	})();
