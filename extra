@@ -1,4 +1,4 @@
-powershell -NoProfile -Command "$d=(Get-Date).AddDays(-30).ToUniversalTime().ToString('yyyyMMddHHmmss.0Z'); $f='(whenCreated>='+$d+')'; Get-ADUser -LDAPFilter $f -Properties * | Sort-Object whenCreated -Descending | Format-List *" > "C:\Users\USERUSER\Desktop\helo.txt"
+powershell -NoProfile -Command "$d=(Get-Date).AddDays(-30).ToUniversalTime().ToString('yyyyMMddHHmmss.0Z'); $f='(whenCreated>='+$d+')'; Get-ADUser -LDAPFilter $f -Properties * | Sort-Object whenCreated -Descending | Format-List *" > "C:\Users\wael.ali\Desktop\helo.txt"
 
 
 powershell -NoProfile -Command "$d=(Get-Date).AddDays(-30).ToUniversalTime().ToString('yyyyMMddHHmmss.0Z'); $f='(pwdLastSet>='+$d+')'; Get-ADUser -LDAPFilter $f -Properties * | Sort-Object whenCreated -Descending | Format-List *"
@@ -15,3 +15,6 @@ powershell -command "Get-DnsServerResourceRecord -ComputerName SOH-AD -ZoneName 
 
 
 powershell -Command "Get-ADUser -LDAPFilter '(samaccountname=selvei.wadei)' -Properties EmployeeID,UserPrincipalName | Select-Object EmployeeID,UserPrincipalName"
+
+
+powershell -Command "Get-ADComputer -Filter {DNSHostName -like 'HR*'} -Properties DNSHostName,IPv4Address,WhenCreated | Select-Object DNSHostName,IPv4Address,WhenCreated"
