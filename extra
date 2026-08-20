@@ -20,3 +20,5 @@ powershell -Command "Get-ADUser -LDAPFilter '(samaccountname=selvei.wadei)' -Pro
 powershell -Command "Get-ADComputer -Filter {DNSHostName -like 'HR*'} -Properties DNSHostName,IPv4Address,WhenCreated | Select-Object DNSHostName,IPv4Address,WhenCreated"
 
 powershell -command "$c=New-CimSession -ComputerName 10.10.167.3 -SessionOption (New-CimSessionOption -Protocol Dcom); Get-CimInstance -CimSession $c -Namespace root/StandardCimv2 MSFT_NetTCPConnection -Filter 'LocalPort=9001 AND State=2' | select LocalAddress,LocalPort,OwningProcess"
+
+powershell -command "$c=New-CimSession -ComputerName 10.10.167.3 -SessionOption (New-CimSessionOption -Protocol Dcom); Get-CimInstance -CimSession $c -Namespace root/StandardCimv2 MSFT_NetTCPConnection -Filter 'OwningProcess=7504' | select LocalAddress,LocalPort,RemoteAddress,RemotePort,State"
